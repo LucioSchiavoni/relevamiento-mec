@@ -31,6 +31,75 @@ func main() {
     macAddress := getMacAddress()
     ipAddress := getIPAddress()
 
+    targetHost := "mec.local"
+	lookupIPs, err := net.LookupHost(targetHost)
+	if err != nil || len(lookupIPs) == 0 {
+		fmt.Printf("❌ No se pudo resolver '%s' por DNS o no devolvió IPs: %v\n", targetHost, err)
+		fmt.Println("No se puede continuar sin la IP asociada a", targetHost)
+		os.Exit(1)
+	}
+	
+	for i := range lookupIPs {
+		lookupIPs[i] = strings.TrimSpace(lookupIPs[i])
+	}
+
+	matchIP, matchMAC := findLocalIPMatching(lookupIPs)
+	if matchIP == "" {
+		fmt.Println("❌ Ninguna IP local coincide con las IPs de", targetHost)
+		fmt.Println("IPs resueltas: ", strings.Join(lookupIPs, ", "))
+		fmt.Println("Listando IPs locales para ayuda:")
+		printLocalIPs()
+		fmt.Println("No se puede continuar sin la IP de", targetHost)
+		os.Exit(1)
+	}
+     
+    func findLocalIPMatching(lookupIPs []string) (string, string) {
+
+	lookupSet := map[string]bool{}
+	for _, ip := range lookupIPs {
+		lookupSet[ip] = true
+	}
+    
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return "", ""
+	}
+
+	for _, iface := range ifaces {
+		if (iface.Flags & net.FlagUp) == 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsLoopback() {
+				continue
+			}
+			ip = ip.To4()
+			if ip == nil {
+				continue 
+			}
+			ipStr := ip.String()
+			if lookupSet[ipStr] {
+				mac := iface.HardwareAddr.String()
+				if mac == "" {
+					mac = "No disponible"
+				}
+				return ipStr, mac
+			}
+		}
+	}
+	return "", ""
+}
 
     fmt.Printf("Firewall: %s\n", getSimpleFirewallStatus())
     fmt.Printf("Dominio: %s\n", getDomainStatus())
