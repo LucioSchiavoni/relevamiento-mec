@@ -16,7 +16,7 @@ import (
 
 func main() {
 	
-    dsn := "root:user@tcp(localhost:3308)/relevamiento_db"
+    dsn := "root:user@tcp(172.24.25.4:3308)/relevamiento_db"
     db, err := sql.Open("mysql", dsn)
     if err != nil {
         log.Fatalf("Error conectando a la DB: %v", err)
@@ -31,6 +31,9 @@ func main() {
     macAddress := getMacAddress()
     ipAddress := getIPAddress()
 
+
+    fmt.Printf("Firewall: %s\n", getSimpleFirewallStatus())
+    fmt.Printf("Dominio: %s\n", getDomainStatus())
 
     piso := inputPrompt("Ingrese el piso")
     oficina := inputPrompt("Ingrese la oficina")
@@ -59,6 +62,7 @@ func main() {
     fmt.Println("✅ Datos guardados correctamente en la base de datos.")
     fmt.Println("Nombre anterior:", computerName)
     fmt.Println("Nombre guardado:", nombreNuevo)
+
 }
 
 
@@ -116,9 +120,46 @@ func getIPAddress() string {
     for _, addr := range addrs {
         if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
             if ipnet.IP.To4() != nil {
-                return ipnet.IP.String()
+                ip := ipnet.IP.String()
+                // Excluir direcciones APIPA (169.254.x.x)
+                if !strings.HasPrefix(ip, "169.254.") {
+                    return ip
+                }
             }
         }
     }
     return "No disponible"
+}
+
+func getSimpleFirewallStatus() string {
+    cmd := exec.Command("powershell", "-Command", "Get-NetFirewallProfile | Select-Object Name, Enabled | Format-Table -HideTableHeaders")
+    output, err := cmd.Output()
+    if err != nil {
+        return "Error al obtener estado del firewall"
+    }
+    result := strings.TrimSpace(string(output))
+    if strings.Contains(result, "True") {
+        return "Activado"
+    }
+    return "Desactivado"
+}
+
+func getDomainStatus() string {
+    cmd := exec.Command("powershell", "-Command", "(Get-WmiObject -Class Win32_ComputerSystem).PartOfDomain")
+    output, err := cmd.Output()
+    if err != nil {
+        return "Error al verificar dominio"
+    }
+
+    result := strings.TrimSpace(string(output))
+    if result == "True" {
+        cmdDomain := exec.Command("powershell", "-Command", "(Get-WmiObject -Class Win32_ComputerSystem).Domain")
+        domainOutput, err := cmdDomain.Output()
+        if err != nil {
+            return "Sí (dominio desconocido)"
+        }
+        domain := strings.TrimSpace(string(domainOutput))
+        return fmt.Sprintf("Sí - Dominio: %s", domain)
+    }
+    return "No (Grupo de trabajo)"
 }
