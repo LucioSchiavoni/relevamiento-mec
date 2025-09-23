@@ -16,7 +16,7 @@ import (
 
 func main() {
 	
-    dsn := "root:user@tcp(172.24.25.4:3308)/relevamiento_db"
+    dsn := "root:user@tcp(localhost:3308)/relevamiento_db"
     db, err := sql.Open("mysql", dsn)
     if err != nil {
         log.Fatalf("Error conectando a la DB: %v", err)
@@ -35,7 +35,16 @@ func main() {
     fmt.Printf("Firewall: %s\n", getSimpleFirewallStatus())
     fmt.Printf("Dominio: %s\n", getDomainStatus())
 
-    piso := inputPrompt("Ingrese el piso")
+    var piso string 
+    for {
+        fmt.Print("Ingrese el piso: ")
+        fmt.Scanln(&piso)
+        if strings.TrimSpace(piso) != "" {
+        break 
+        }
+        fmt.Println("El piso no puede estar vacío.")
+    }
+
     oficina := inputPrompt("Ingrese la oficina")
 
     // 3️⃣ Preguntar si hay nuevo nombre de PC
