@@ -52,6 +52,25 @@ func main() {
 		fmt.Println("No se puede continuar sin la IP de", targetHost)
 		os.Exit(1)
 	}
+
+    func printLocalIPs() {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		fmt.Println("  Error listando interfaces:", err)
+		return
+	}
+	for _, iface := range ifaces {
+		addrs, _ := iface.Addrs()
+		if len(addrs) == 0 {
+			continue
+		}
+		fmt.Printf(" - %s (%s):\n", iface.Name, iface.HardwareAddr.String())
+		for _, a := range addrs {
+			fmt.Printf("    %s\n", a.String())
+		}
+	}
+}
+
      
     func findLocalIPMatching(lookupIPs []string) (string, string) {
 
@@ -59,7 +78,7 @@ func main() {
 	for _, ip := range lookupIPs {
 		lookupSet[ip] = true
 	}
-    
+
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return "", ""
