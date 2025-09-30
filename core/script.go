@@ -1,12 +1,11 @@
 package core
 
 import (
-	"net"
 	"os/exec"
 	"strings"
 )
 
-func getMacAddress() string {
+func GetMacAddress() string {
     cmd := exec.Command("getmac")
     out, err := cmd.Output()
     if err != nil {

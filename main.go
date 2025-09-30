@@ -12,10 +12,12 @@ import (
 
     _ "github.com/go-sql-driver/mysql"
     "github.com/manifoldco/promptui"
+    "relevamiento/core"
 )
 
 func main() {
-	
+
+    
     dsn := "root:user@tcp(172.24.25.4:3308)/relevamiento_db"
     db, err := sql.Open("mysql", dsn)
     if err != nil {
@@ -28,7 +30,7 @@ func main() {
         computerName = "Desconocido"
     }
 
-    macAddress := getMacAddress()
+    macAddress := core.GetMacAddress()
     ipAddress := getIPAddress()
     
     // Mostrar información de la red que se va a registrar
@@ -115,39 +117,7 @@ func inputPrompt(label string) string {
     return result
 }
 
-func getMacAddress() string {
-    cmd := exec.Command("getmac")
-    out, err := cmd.Output()
-    if err != nil {
-        return "No disponible"
-    }
-    
-    lines := strings.Split(string(out), "\n")
 
-    for _, line := range lines {
-        line = strings.TrimSpace(line)
-        
-        if strings.Contains(line, "Dirección física") || 
-           strings.Contains(line, "==========") || 
-           line == "" {
-            continue
-        }
-        
-        fields := strings.Fields(line)
-        if len(fields) >= 2 {
-            macAddr := fields[0]
-            transportName := strings.Join(fields[1:], " ")
-            
-            if strings.Contains(macAddr, "-") && 
-               len(macAddr) == 17 && 
-               !strings.Contains(transportName, "Medios desconectados") {
-                return macAddr
-            }
-        }
-    }
-    
-    return "No disponible"
-}
 
 func getIPAddress() string {
     addrs, err := net.InterfaceAddrs()
