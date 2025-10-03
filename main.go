@@ -66,7 +66,7 @@ func main() {
 
 	fmt.Println("=== INFORMACIÓN DE RED ===")
 	fmt.Printf("IP que se registrará: %s\n", ipAddress)
-	fmt.Printf("MAC que se registrará: %s\n", macAddress)
+	fmt.Printf("MAC que se registrará: %s\n", macAddress)\
 
 	if ipAddress != "No disponible" {
 		networkInfo := getNetworkInfo(ipAddress)
