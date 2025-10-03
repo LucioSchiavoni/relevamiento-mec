@@ -11,7 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
-
+	"github.com/joho/godotenv"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/manifoldco/promptui"
 	"relevamiento/core"
@@ -19,11 +19,18 @@ import (
 )
 
 func main() {
-	dbHost := getEnvOrDefault("DB_HOST", "172.24.25.4")
-	dbPort := getEnvOrDefault("DB_PORT", "3308")
-	dbUser := getEnvOrDefault("DB_USER", "root")
-	dbPass := getEnvOrDefault("DB_PASS", "user")
-	dbName := getEnvOrDefault("DB_NAME", "relevamiento_db")
+
+    err := godotenv.Load()
+	
+    if err != nil {
+		log.Fatal("Error cargando archivo .env")
+	}
+
+	dbHost := os.Getenv("DB_HOST")
+	dbPort := os.Getenv("DB_PORT")
+	dbUser := os.Getenv("DB_USER")
+	dbPass := os.Getenv("DB_PASS")
+	dbName := os.Getenv("DB_NAME")
 
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&timeout=10s",
 		dbUser, dbPass, dbHost, dbPort, dbName)
@@ -57,7 +64,6 @@ func main() {
 	macAddress := core.GetMacAddress()
 	ipAddress := getIPAddress()
 
-	// Mostrar información de red
 	fmt.Println("=== INFORMACIÓN DE RED ===")
 	fmt.Printf("IP que se registrará: %s\n", ipAddress)
 	fmt.Printf("MAC que se registrará: %s\n", macAddress)
