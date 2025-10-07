@@ -19,31 +19,42 @@ import (
 )
 
 func main() {
-	// Cargar variables de entorno
+
 	if err := godotenv.Load(); err != nil {
 		log.Fatal("Error: archivo .env no encontrado")
 	}
 
-	// Configurar conexión a BD
+
 	db, err := initDB()
 	if err != nil {
 		log.Fatalf("Error de conexión: %v", err)
 	}
 	defer db.Close()
 
-	// Obtener información del equipo
+
 	computerName := getEnv("COMPUTERNAME", "Desconocido")
+
 	macAddress := core.GetMacAddress()
 	ipAddress := getIPAddress()
 
-	// Validar datos críticos
+	
 	if macAddress == "No disponible" || ipAddress == "No disponible" {
 		log.Fatal("Error: No se pudo obtener MAC o IP del equipo")
 	}
 
-	// Configuración por defecto
-	piso := "3"
-	oficina := "Gestion Financiera"
+	domainInfo := core.GetDomainInfo()
+
+
+	if domainInfo.EsMecLocal {
+    fmt.Println("En dominio mec.local")
+	} else if domainInfo.EnDominio {
+    fmt.Printf("En dominio %s\n", domainInfo.NombreDominio)
+	} else {
+    fmt.Println("WORKGROUP")
+	}
+
+piso := "3"
+oficina := "Gestion Financiera"
 
 	fmt.Printf("\nEquipo: %s\n", computerName)
 	cambiarNombre := inputPrompt("¿Cambiar nombre del equipo? (S/N)")
@@ -59,7 +70,7 @@ func main() {
 		}
 	}
 
-	// Preparar datos
+
 	equipoInfo := repository.EquipoInfo{
 		FechaRelevamiento: time.Now().Format("2006-01-02 15:04:05"),
 		ComputerName:      nombreNuevo,
@@ -70,14 +81,14 @@ func main() {
 		Oficina:           oficina,
 	}
 
-	// Guardar en BD
+
 	fmt.Println(" Guardando...")
 	result, err := repository.CreateEquiposRepository(db, equipoInfo)
 	if err != nil || !result.Success {
 		log.Fatalf(" Error al guardar: %s", result.ErrorMessage)
 	}
 
-	// Confirmación
+
 	fmt.Println("REGISTRO EXITOSO")
 	if result.VerifiedData != nil {
 		v := result.VerifiedData
@@ -115,8 +126,16 @@ func initDB() (*sql.DB, error) {
 	return db, nil
 }
 
+
+
 func getIPAddress() string {
 	addrs, err := net.InterfaceAddrs()
+
+	networkPrefix := os.Getenv("NETWORK_PREFIX")
+	if networkPrefix == "" {
+    log.Fatal("Error: NETWORK_PREFIX no configurado en .env")
+	}
+
 	if err != nil {
 		return "No disponible"
 	}
@@ -128,17 +147,16 @@ func getIPAddress() string {
 			if ipnet.IP.To4() != nil {
 				ip := ipnet.IP.String()
 
-				// Ignorar IPs APIPA
+				
 				if strings.HasPrefix(ip, "169.254.") {
 					continue
 				}
 
-				// Prioridad: IP de la red corporativa 172.24.x.x
-				if strings.HasPrefix(ip, "172.24.") {
-					return ip
-				}
-
-				// Guardar primera IP válida como respaldo
+		
+				if strings.HasPrefix(ip, networkPrefix) {
+       			 return ip
+    		}
+	
 				if fallbackIP == "" {
 					fallbackIP = ip
 				}
@@ -146,7 +164,7 @@ func getIPAddress() string {
 		}
 	}
 
-	// Si no encontró 172.24.x.x, devuelve la IP válida encontrada
+
 	if fallbackIP != "" {
 		return fallbackIP
 	}
