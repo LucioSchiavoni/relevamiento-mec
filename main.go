@@ -53,8 +53,8 @@ func main() {
     fmt.Println("WORKGROUP")
 	}
 
-piso := "3"
-oficina := "Gestion Financiera"
+piso := "1"
+oficina := "Obras y Servicios"
 
 	fmt.Printf("\nEquipo: %s\n", computerName)
 	cambiarNombre := inputPrompt("¿Cambiar nombre del equipo? (S/N)")
