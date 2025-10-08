@@ -54,26 +54,16 @@ func main() {
 	}
 
 piso := "1"
-oficina := "Obras y Servicios"
+oficina := "Biblioteca"
+
+
 
 	fmt.Printf("\nEquipo: %s\n", computerName)
-	cambiarNombre := inputPrompt("¿Cambiar nombre del equipo? (S/N)")
-	nombreNuevo := computerName
-
-	if strings.ToLower(strings.TrimSpace(cambiarNombre)) == "s" {
-		nombreNuevo = inputPrompt("Nuevo nombre")
-		nombreNuevo = sanitizeInput(nombreNuevo, 100)
-
-		if !isValidComputerName(nombreNuevo) {
-			fmt.Println("Nombre inválido. Se usará el actual.")
-			nombreNuevo = computerName
-		}
-	}
 
 
 	equipoInfo := repository.EquipoInfo{
 		FechaRelevamiento: time.Now().Format("2006-01-02 15:04:05"),
-		ComputerName:      nombreNuevo,
+		ComputerName:      computerName,
 		NombreAnterior:    computerName,
 		MacAddress:        macAddress,
 		IPAddress:         ipAddress,
