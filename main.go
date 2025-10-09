@@ -7,8 +7,10 @@ import (
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"relevamiento/core"
 	"relevamiento/repository"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -17,39 +19,65 @@ import (
 	"github.com/manifoldco/promptui"
 )
 
+var logFile *os.File
+
 func main() {
+	defer handlePanic()
+	defer waitForExit()
+
+	initLogging()
+	defer closeLogging()
+
+	logInfo("Iniciando relevamiento...")
+
 	fmt.Println(strings.Repeat("=", 60))
 	fmt.Println("       RELEVAMIENTO DE EQUIPOS")
 	fmt.Println(strings.Repeat("=", 60))
 
+	if err := validateEnvironment(); err != nil {
+		logError("Error en validacion inicial", err)
+		log.Fatalf("[ERROR] %v", err)
+	}
+
 	if err := godotenv.Load(); err != nil {
+		logError("Archivo .env no encontrado", err)
 		log.Fatal("Error: archivo .env no encontrado")
 	}
 
 	db, err := initDB()
 	if err != nil {
+		logError("Error de conexion a DB", err)
 		log.Fatalf("Error de conexion a DB: %v", err)
 	}
 	defer db.Close()
 
 	computerName := getEnv("COMPUTERNAME", "Desconocido")
+	logInfo(fmt.Sprintf("Computer Name: %s", computerName))
 
 	macAddress, err := core.GetEthernetMacWithConfirmation()
 	if err != nil || macAddress == "No disponible" {
+		logError("No se pudo obtener MAC", err)
 		log.Fatal("[ERROR] No se pudo obtener MAC de Ethernet")
 	}
+	logInfo(fmt.Sprintf("MAC detectada: %s", macAddress))
 
 	ipAddress := getIPAddress()
 	if ipAddress == "No disponible" {
+		logError("No se pudo obtener IP", nil)
 		log.Fatal("[ERROR] No se pudo obtener IP del equipo")
 	}
+	logInfo(fmt.Sprintf("IP detectada: %s", ipAddress))
 
 	domainInfo := core.GetDomainInfo()
 	if !domainInfo.EnDominio {
 		fmt.Println("\n[!] ADVERTENCIA: EQUIPO NO ESTA EN DOMINIO")
+		logWarning("Equipo no esta en dominio")
+	} else {
+		logInfo(fmt.Sprintf("Dominio: %s", domainInfo.NombreDominio))
 	}
 
 	piso, oficina := getLocationData()
+	logInfo(fmt.Sprintf("Ubicacion: Piso %s - %s", piso, oficina))
 
 	equipoInfo := repository.EquipoInfo{
 		FechaRelevamiento: time.Now().Format("2006-01-02 15:04:05"),
@@ -64,17 +92,117 @@ func main() {
 	fmt.Println("\n>> Guardando...")
 	result, err := repository.CreateEquiposRepository(db, equipoInfo)
 	if err != nil || !result.Success {
+		logError("Error al guardar en DB", err)
 		log.Fatalf("[ERROR] %s", result.ErrorMessage)
 	}
 
+	logInfo(fmt.Sprintf("Registro exitoso - ID: %d", result.InsertedID))
 	printSuccess(result)
+}
 
+func handlePanic() {
+	if r := recover(); r != nil {
+		logError("PANIC DETECTADO", fmt.Errorf("%v", r))
+		fmt.Printf("\n[ERROR CRITICO] El programa encontro un error inesperado\n")
+		fmt.Printf("Error: %v\n", r)
+		fmt.Printf("\nStack trace:\n%s\n", debug.Stack())
+		fmt.Printf("\nRevise el archivo error.log para mas detalles\n")
+		waitForExit()
+	}
+}
+
+func waitForExit() {
 	fmt.Println("\nPresione Enter para salir...")
 	fmt.Scanln()
 }
 
+func initLogging() {
+	exePath, err := os.Executable()
+	if err != nil {
+		log.Printf("No se pudo obtener ruta del ejecutable: %v", err)
+		return
+	}
+
+	exeDir := filepath.Dir(exePath)
+	logPath := filepath.Join(exeDir, "error.log")
+
+	logFile, err = os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Printf("No se pudo crear archivo de log: %v", err)
+		return
+	}
+
+	log.SetOutput(logFile)
+	logInfo("========== NUEVA EJECUCION ==========")
+}
+
+func closeLogging() {
+	if logFile != nil {
+		logFile.Close()
+	}
+}
+
+func logInfo(msg string) {
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	logMsg := fmt.Sprintf("[INFO] %s - %s", timestamp, msg)
+	if logFile != nil {
+		logFile.WriteString(logMsg + "\n")
+	}
+	log.Println(logMsg)
+}
+
+func logWarning(msg string) {
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	logMsg := fmt.Sprintf("[WARNING] %s - %s", timestamp, msg)
+	if logFile != nil {
+		logFile.WriteString(logMsg + "\n")
+	}
+	log.Println(logMsg)
+}
+
+func logError(msg string, err error) {
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	logMsg := fmt.Sprintf("[ERROR] %s - %s", timestamp, msg)
+	if err != nil {
+		logMsg += fmt.Sprintf(" - %v", err)
+	}
+	if logFile != nil {
+		logFile.WriteString(logMsg + "\n")
+	}
+	log.Println(logMsg)
+}
+
+func validateEnvironment() error {
+	computerName := os.Getenv("COMPUTERNAME")
+	if computerName == "" {
+		return fmt.Errorf("variable COMPUTERNAME no disponible")
+	}
+
+	exePath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("no se pudo obtener ruta del ejecutable: %v", err)
+	}
+	exeDir := filepath.Dir(exePath)
+
+	envPath := filepath.Join(exeDir, ".env")
+	if _, err := os.Stat(envPath); os.IsNotExist(err) {
+		return fmt.Errorf("archivo .env no encontrado en: %s", exeDir)
+	}
+
+	testFile := filepath.Join(exeDir, "test_write.tmp")
+	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
+		return fmt.Errorf("no hay permisos de escritura en: %s", exeDir)
+	}
+	os.Remove(testFile)
+
+	return nil
+}
+
 func getLocationData() (string, string) {
-	config, _ := core.LoadLocationConfig()
+	config, err := core.LoadLocationConfig()
+	if err != nil {
+		logError("Error cargando configuracion", err)
+	}
 
 	fmt.Println("\n" + strings.Repeat("=", 60))
 
@@ -112,13 +240,16 @@ func configureLocation() (string, string) {
 
 	oficina := inputPrompt("OFICINA")
 	if oficina == "" {
+		logError("Oficina vacia", nil)
 		log.Fatal("[ERROR] Oficina es obligatoria")
 	}
 
 	if err := core.SaveLocationConfig(piso, oficina); err != nil {
+		logError("No se pudo guardar configuracion", err)
 		fmt.Printf("[!] No se pudo guardar: %v\n", err)
 	} else {
 		fmt.Printf("[OK] Guardado: Piso %s - %s\n", piso, oficina)
+		logInfo(fmt.Sprintf("Configuracion guardada: Piso %s - %s", piso, oficina))
 	}
 
 	return piso, oficina
@@ -142,6 +273,13 @@ func printSuccess(result *repository.EquipoResult) {
 }
 
 func initDB() (*sql.DB, error) {
+	requiredVars := []string{"DB_USER", "DB_PASS", "DB_HOST", "DB_PORT", "DB_NAME"}
+	for _, varName := range requiredVars {
+		if os.Getenv(varName) == "" {
+			return nil, fmt.Errorf("variable %s no configurada en .env", varName)
+		}
+	}
+
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&timeout=10s",
 		os.Getenv("DB_USER"),
 		os.Getenv("DB_PASS"),
@@ -151,7 +289,7 @@ func initDB() (*sql.DB, error) {
 
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error abriendo conexion: %v", err)
 	}
 
 	db.SetMaxOpenConns(5)
@@ -162,9 +300,10 @@ func initDB() (*sql.DB, error) {
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("no se pudo conectar a la base de datos: %v", err)
 	}
 
+	logInfo("Conexion a DB exitosa")
 	return db, nil
 }
 
@@ -173,10 +312,12 @@ func getIPAddress() string {
 
 	networkPrefix := os.Getenv("NETWORK_PREFIX")
 	if networkPrefix == "" {
+		logError("NETWORK_PREFIX no configurado", nil)
 		log.Fatal("Error: NETWORK_PREFIX no configurado en .env")
 	}
 
 	if err != nil {
+		logError("Error obteniendo direcciones de red", err)
 		return "No disponible"
 	}
 
@@ -213,6 +354,7 @@ func inputPrompt(label string) string {
 	prompt := promptui.Prompt{Label: label}
 	result, err := prompt.Run()
 	if err != nil {
+		logError("Error en input prompt", err)
 		return ""
 	}
 	return strings.TrimSpace(result)
