@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"fmt"
@@ -16,7 +17,6 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/joho/godotenv"
-	"github.com/manifoldco/promptui"
 )
 
 var logFile *os.File
@@ -44,6 +44,84 @@ func main() {
 		log.Fatal("Error: archivo .env no encontrado")
 	}
 
+	showMenu()
+}
+
+func showMenu() {
+	config, _ := core.LoadLocationConfig()
+
+	fmt.Println("\n" + strings.Repeat("=", 60))
+
+	if config != nil {
+		fmt.Printf("Configuracion actual: Piso %s - %s\n", config.Piso, config.Oficina)
+	} else {
+		fmt.Println("Sin configuracion guardada")
+	}
+
+	fmt.Println("\n[1] Captura rapida")
+	fmt.Println("[2] Configurar ubicacion")
+
+	var opcion string
+	for {
+		fmt.Print("\nOpcion: ")
+		fmt.Scanln(&opcion)
+		
+		if opcion == "1" {
+			if config == nil {
+				fmt.Println("[X] Debe configurar primero (opcion 2)")
+				continue
+			}
+			executeCapture(config.Piso, config.Oficina)
+			return
+		} else if opcion == "2" {
+			configureOnly()
+			return
+		} else {
+			fmt.Println("[X] Opcion invalida")
+		}
+	}
+}
+
+func configureOnly() {
+	reader := bufio.NewReader(os.Stdin)
+
+	fmt.Println("\n" + strings.Repeat("-", 60))
+	fmt.Println("       CONFIGURAR UBICACION")
+	fmt.Println(strings.Repeat("-", 60))
+
+	fmt.Print("\nPISO (presione Enter para usar '0'): ")
+	piso, _ := reader.ReadString('\n')
+	piso = strings.TrimSpace(piso)
+	if piso == "" {
+		piso = "0"
+	}
+
+	fmt.Print("OFICINA: ")
+	oficina, _ := reader.ReadString('\n')
+	oficina = strings.TrimSpace(oficina)
+	
+	if oficina == "" {
+		logError("Oficina vacia", nil)
+		log.Fatal("[ERROR] La oficina es obligatoria")
+	}
+
+	if err := core.SaveLocationConfig(piso, oficina); err != nil {
+		logError("No se pudo guardar configuracion", err)
+		fmt.Printf("[!] No se pudo guardar: %v\n", err)
+		return
+	}
+
+	fmt.Println("\n" + strings.Repeat("=", 60))
+	fmt.Println("[OK] CONFIGURACION GUARDADA")
+	fmt.Println(strings.Repeat("=", 60))
+	fmt.Printf("\nPiso:    %s\n", piso)
+	fmt.Printf("Oficina: %s\n", oficina)
+	fmt.Println(strings.Repeat("=", 60))
+	
+	logInfo(fmt.Sprintf("Configuracion guardada: Piso %s - %s", piso, oficina))
+}
+
+func executeCapture(piso, oficina string) {
 	db, err := initDB()
 	if err != nil {
 		logError("Error de conexion a DB", err)
@@ -53,7 +131,7 @@ func main() {
 
 	computerName := getEnv("COMPUTERNAME", "Desconocido")
 	logInfo(fmt.Sprintf("Computer Name: %s", computerName))
-
+	
 	macAddress, err := core.GetEthernetMacWithConfirmation()
 	if err != nil || macAddress == "No disponible" {
 		logError("No se pudo obtener MAC", err)
@@ -75,9 +153,6 @@ func main() {
 	} else {
 		logInfo(fmt.Sprintf("Dominio: %s", domainInfo.NombreDominio))
 	}
-
-	piso, oficina := getLocationData()
-	logInfo(fmt.Sprintf("Ubicacion: Piso %s - %s", piso, oficina))
 
 	equipoInfo := repository.EquipoInfo{
 		FechaRelevamiento: time.Now().Format("2006-01-02 15:04:05"),
@@ -122,7 +197,7 @@ func initLogging() {
 		log.Printf("No se pudo obtener ruta del ejecutable: %v", err)
 		return
 	}
-
+	
 	exeDir := filepath.Dir(exePath)
 	logPath := filepath.Join(exeDir, "error.log")
 
@@ -198,68 +273,11 @@ func validateEnvironment() error {
 	return nil
 }
 
-func getLocationData() (string, string) {
-	config, err := core.LoadLocationConfig()
-	if err != nil {
-		logError("Error cargando configuracion", err)
-	}
-
-	fmt.Println("\n" + strings.Repeat("=", 60))
-
-	if config != nil {
-		fmt.Printf("Configuracion actual: Piso %s - %s\n", config.Piso, config.Oficina)
-	}
-
-	fmt.Println("\n[1] Captura rapida")
-	fmt.Println("[2] Configurar ubicacion")
-
-	var opcion string
-	for {
-		fmt.Print("\nOpcion: ")
-		fmt.Scanln(&opcion)
-
-		if opcion == "1" {
-			if config == nil {
-				fmt.Println("[X] Debe configurar primero (opcion 2)")
-				continue
-			}
-			return config.Piso, config.Oficina
-		} else if opcion == "2" {
-			return configureLocation()
-		} else {
-			fmt.Println("[X] Opcion invalida")
-		}
-	}
-}
-
-func configureLocation() (string, string) {
-	piso := inputPrompt("\nPISO")
-	if piso == "" {
-		piso = "0"
-	}
-
-	oficina := inputPrompt("OFICINA")
-	if oficina == "" {
-		logError("Oficina vacia", nil)
-		log.Fatal("[ERROR] Oficina es obligatoria")
-	}
-
-	if err := core.SaveLocationConfig(piso, oficina); err != nil {
-		logError("No se pudo guardar configuracion", err)
-		fmt.Printf("[!] No se pudo guardar: %v\n", err)
-	} else {
-		fmt.Printf("[OK] Guardado: Piso %s - %s\n", piso, oficina)
-		logInfo(fmt.Sprintf("Configuracion guardada: Piso %s - %s", piso, oficina))
-	}
-
-	return piso, oficina
-}
-
 func printSuccess(result *repository.EquipoResult) {
 	fmt.Println("\n" + strings.Repeat("=", 60))
 	fmt.Println("[OK] REGISTRO EXITOSO")
 	fmt.Println(strings.Repeat("=", 60))
-
+	
 	if result.VerifiedData != nil {
 		v := result.VerifiedData
 		fmt.Printf("\nID:        %d\n", v.ID)
@@ -268,7 +286,7 @@ func printSuccess(result *repository.EquipoResult) {
 		fmt.Printf("IP:        %s\n", v.IPAddress)
 		fmt.Printf("Ubicacion: Piso %s - %s\n", v.Piso, v.Oficina)
 	}
-
+	
 	fmt.Println(strings.Repeat("=", 60))
 }
 
@@ -348,16 +366,6 @@ func getIPAddress() string {
 	}
 
 	return "No disponible"
-}
-
-func inputPrompt(label string) string {
-	prompt := promptui.Prompt{Label: label}
-	result, err := prompt.Run()
-	if err != nil {
-		logError("Error en input prompt", err)
-		return ""
-	}
-	return strings.TrimSpace(result)
 }
 
 func getEnv(key, defaultValue string) string {
