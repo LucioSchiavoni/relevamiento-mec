@@ -7,7 +7,6 @@ import (
 	"time"
 )
 
-
 type EquipoInfo struct {
 	FechaRelevamiento string
 	ComputerName      string
@@ -18,15 +17,13 @@ type EquipoInfo struct {
 	Oficina           string
 }
 
-
 type EquipoResult struct {
-	Success       bool
-	InsertedID    int64
-	RowsAffected  int64
-	VerifiedData  *EquipoVerificado
-	ErrorMessage  string
+	Success      bool
+	InsertedID   int64
+	RowsAffected int64
+	VerifiedData *EquipoVerificado
+	ErrorMessage string
 }
-
 
 type EquipoVerificado struct {
 	ID           int64
@@ -36,7 +33,6 @@ type EquipoVerificado struct {
 	Oficina      string
 	Piso         string
 }
-
 
 func CreateEquiposRepository(db *sql.DB, equipo EquipoInfo) (*EquipoResult, error) {
 	result := &EquipoResult{
@@ -48,7 +44,7 @@ func CreateEquiposRepository(db *sql.DB, equipo EquipoInfo) (*EquipoResult, erro
 
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		result.ErrorMessage = fmt.Sprintf("Error iniciando transacción: %v", err)
+		result.ErrorMessage = fmt.Sprintf("Error iniciando transaccion: %v", err)
 		return result, err
 	}
 
@@ -84,20 +80,18 @@ func CreateEquiposRepository(db *sql.DB, equipo EquipoInfo) (*EquipoResult, erro
 	result.RowsAffected = rowsAffected
 
 	if rowsAffected == 0 {
-		result.ErrorMessage = "No se insertó ningún registro"
-		return result, fmt.Errorf("no se insertó ningún registro")
+		result.ErrorMessage = "No se inserto ningun registro"
+		return result, fmt.Errorf("no se inserto ningun registro")
 	}
 
 	lastID, err := execResult.LastInsertId()
-	if err != nil {
-		fmt.Printf("Advertencia: No se pudo obtener LastInsertId: %v\n", err)
-	} else {
+	if err == nil {
 		result.InsertedID = lastID
 	}
 
 	verificado, err := verificarInsercion(ctx, tx, equipo)
 	if err != nil {
-		result.ErrorMessage = fmt.Sprintf("Error verificando inserción: %v", err)
+		result.ErrorMessage = fmt.Sprintf("Error verificando insercion: %v", err)
 		return result, err
 	}
 	result.VerifiedData = verificado
@@ -108,11 +102,9 @@ func CreateEquiposRepository(db *sql.DB, equipo EquipoInfo) (*EquipoResult, erro
 		return result, err
 	}
 
-	// Todo exitoso
 	result.Success = true
 	return result, nil
 }
-
 
 func verificarInsercion(ctx context.Context, tx *sql.Tx, equipo EquipoInfo) (*EquipoVerificado, error) {
 	verificado := &EquipoVerificado{}
@@ -143,34 +135,4 @@ func verificarInsercion(ctx context.Context, tx *sql.Tx, equipo EquipoInfo) (*Eq
 	}
 
 	return verificado, nil
-}
-
-// CreateEquiposRepositorySimple es una versión simplificada sin verificación extra
-func CreateEquiposRepositorySimple(db *sql.DB, equipo EquipoInfo) (int64, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	query := `INSERT INTO equipo_info 
-		(fecha_relevamiento, computer_name, nombre_anterior, mac_address, ip_address, piso, oficina)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`
-
-	result, err := db.ExecContext(ctx, query,
-		equipo.FechaRelevamiento,
-		equipo.ComputerName,
-		equipo.NombreAnterior,
-		equipo.MacAddress,
-		equipo.IPAddress,
-		equipo.Piso,
-		equipo.Oficina,
-	)
-	if err != nil {
-		return 0, fmt.Errorf("error insertando en BD: %v", err)
-	}
-
-	lastID, err := result.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("error obteniendo ID insertado: %v", err)
-	}
-
-	return lastID, nil
 }

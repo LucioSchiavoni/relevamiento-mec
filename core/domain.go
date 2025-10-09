@@ -5,13 +5,11 @@ import (
 	"strings"
 )
 
-
 type DomainInfo struct {
 	EnDominio     bool
 	NombreDominio string
 	EsMecLocal    bool
 }
-
 
 func GetDomainInfo() DomainInfo {
 	info := DomainInfo{
@@ -20,7 +18,6 @@ func GetDomainInfo() DomainInfo {
 		EsMecLocal:    false,
 	}
 
-
 	cmd := exec.Command("wmic", "computersystem", "get", "domain")
 	out, err := cmd.Output()
 	if err != nil {
@@ -28,11 +25,9 @@ func GetDomainInfo() DomainInfo {
 	}
 
 	lines := strings.Split(string(out), "\n")
-	
 
 	for i, line := range lines {
 		line = strings.TrimSpace(line)
-		
 
 		if i == 0 || line == "" || strings.ToLower(line) == "domain" {
 			continue
@@ -40,18 +35,15 @@ func GetDomainInfo() DomainInfo {
 
 		dominio := strings.ToLower(line)
 
-	
 		if dominio == "workgroup" {
 			info.EnDominio = false
 			info.NombreDominio = ""
 			return info
 		}
 
-
 		info.EnDominio = true
-		info.NombreDominio = line 
-		
-	
+		info.NombreDominio = line
+
 		if dominio == "mec.local" {
 			info.EsMecLocal = true
 		}
@@ -62,14 +54,12 @@ func GetDomainInfo() DomainInfo {
 	return info
 }
 
-
 func GetDomainInfoAlternative() DomainInfo {
 	info := DomainInfo{
 		EnDominio:     false,
 		NombreDominio: "",
 		EsMecLocal:    false,
 	}
-
 
 	cmd := exec.Command("systeminfo")
 	out, err := cmd.Output()
@@ -78,7 +68,7 @@ func GetDomainInfoAlternative() DomainInfo {
 	}
 
 	lines := strings.Split(string(out), "\n")
-	
+
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 
@@ -88,14 +78,13 @@ func GetDomainInfoAlternative() DomainInfo {
 				dominio := strings.TrimSpace(parts[1])
 				dominioLower := strings.ToLower(dominio)
 
-		
 				if dominioLower == "workgroup" {
 					return info
 				}
 
 				info.EnDominio = true
 				info.NombreDominio = dominio
-				
+
 				if dominioLower == "mec.local" {
 					info.EsMecLocal = true
 				}

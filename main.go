@@ -7,7 +7,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"regexp"
 	"relevamiento/core"
 	"relevamiento/repository"
 	"strings"
@@ -19,47 +18,38 @@ import (
 )
 
 func main() {
+	fmt.Println(strings.Repeat("=", 60))
+	fmt.Println("       RELEVAMIENTO DE EQUIPOS")
+	fmt.Println(strings.Repeat("=", 60))
 
 	if err := godotenv.Load(); err != nil {
 		log.Fatal("Error: archivo .env no encontrado")
 	}
 
-
 	db, err := initDB()
 	if err != nil {
-		log.Fatalf("Error de conexión: %v", err)
+		log.Fatalf("Error de conexion a DB: %v", err)
 	}
 	defer db.Close()
 
-
 	computerName := getEnv("COMPUTERNAME", "Desconocido")
 
-	macAddress := core.GetMacAddress()
-	ipAddress := getIPAddress()
+	macAddress, err := core.GetEthernetMacWithConfirmation()
+	if err != nil || macAddress == "No disponible" {
+		log.Fatal("[ERROR] No se pudo obtener MAC de Ethernet")
+	}
 
-	
-	if macAddress == "No disponible" || ipAddress == "No disponible" {
-		log.Fatal("Error: No se pudo obtener MAC o IP del equipo")
+	ipAddress := getIPAddress()
+	if ipAddress == "No disponible" {
+		log.Fatal("[ERROR] No se pudo obtener IP del equipo")
 	}
 
 	domainInfo := core.GetDomainInfo()
-
-
-	if domainInfo.EsMecLocal {
-    fmt.Println("En dominio mec.local")
-	} else if domainInfo.EnDominio {
-    fmt.Printf("En dominio %s\n", domainInfo.NombreDominio)
-	} else {
-    fmt.Println("WORKGROUP")
+	if !domainInfo.EnDominio {
+		fmt.Println("\n[!] ADVERTENCIA: EQUIPO NO ESTA EN DOMINIO")
 	}
 
-piso := "1"
-oficina := "Biblioteca"
-
-
-
-	fmt.Printf("\nEquipo: %s\n", computerName)
-
+	piso, oficina := getLocationData()
 
 	equipoInfo := repository.EquipoInfo{
 		FechaRelevamiento: time.Now().Format("2006-01-02 15:04:05"),
@@ -71,22 +61,84 @@ oficina := "Biblioteca"
 		Oficina:           oficina,
 	}
 
-
-	fmt.Println(" Guardando...")
+	fmt.Println("\n>> Guardando...")
 	result, err := repository.CreateEquiposRepository(db, equipoInfo)
 	if err != nil || !result.Success {
-		log.Fatalf(" Error al guardar: %s", result.ErrorMessage)
+		log.Fatalf("[ERROR] %s", result.ErrorMessage)
 	}
 
-
-	fmt.Println("REGISTRO EXITOSO")
-	if result.VerifiedData != nil {
-		v := result.VerifiedData
-		fmt.Printf("ID: %d | %s | %s\n", v.ID, v.ComputerName, v.Oficina)
-	}
+	printSuccess(result)
 
 	fmt.Println("\nPresione Enter para salir...")
 	fmt.Scanln()
+}
+
+func getLocationData() (string, string) {
+	config, _ := core.LoadLocationConfig()
+
+	fmt.Println("\n" + strings.Repeat("=", 60))
+
+	if config != nil {
+		fmt.Printf("Configuracion actual: Piso %s - %s\n", config.Piso, config.Oficina)
+	}
+
+	fmt.Println("\n[1] Captura rapida")
+	fmt.Println("[2] Configurar ubicacion")
+
+	var opcion string
+	for {
+		fmt.Print("\nOpcion: ")
+		fmt.Scanln(&opcion)
+
+		if opcion == "1" {
+			if config == nil {
+				fmt.Println("[X] Debe configurar primero (opcion 2)")
+				continue
+			}
+			return config.Piso, config.Oficina
+		} else if opcion == "2" {
+			return configureLocation()
+		} else {
+			fmt.Println("[X] Opcion invalida")
+		}
+	}
+}
+
+func configureLocation() (string, string) {
+	piso := inputPrompt("\nPISO")
+	if piso == "" {
+		piso = "0"
+	}
+
+	oficina := inputPrompt("OFICINA")
+	if oficina == "" {
+		log.Fatal("[ERROR] Oficina es obligatoria")
+	}
+
+	if err := core.SaveLocationConfig(piso, oficina); err != nil {
+		fmt.Printf("[!] No se pudo guardar: %v\n", err)
+	} else {
+		fmt.Printf("[OK] Guardado: Piso %s - %s\n", piso, oficina)
+	}
+
+	return piso, oficina
+}
+
+func printSuccess(result *repository.EquipoResult) {
+	fmt.Println("\n" + strings.Repeat("=", 60))
+	fmt.Println("[OK] REGISTRO EXITOSO")
+	fmt.Println(strings.Repeat("=", 60))
+
+	if result.VerifiedData != nil {
+		v := result.VerifiedData
+		fmt.Printf("\nID:        %d\n", v.ID)
+		fmt.Printf("Equipo:    %s\n", v.ComputerName)
+		fmt.Printf("MAC:       %s\n", v.MacAddress)
+		fmt.Printf("IP:        %s\n", v.IPAddress)
+		fmt.Printf("Ubicacion: Piso %s - %s\n", v.Piso, v.Oficina)
+	}
+
+	fmt.Println(strings.Repeat("=", 60))
 }
 
 func initDB() (*sql.DB, error) {
@@ -116,14 +168,12 @@ func initDB() (*sql.DB, error) {
 	return db, nil
 }
 
-
-
 func getIPAddress() string {
 	addrs, err := net.InterfaceAddrs()
 
 	networkPrefix := os.Getenv("NETWORK_PREFIX")
 	if networkPrefix == "" {
-    log.Fatal("Error: NETWORK_PREFIX no configurado en .env")
+		log.Fatal("Error: NETWORK_PREFIX no configurado en .env")
 	}
 
 	if err != nil {
@@ -137,23 +187,20 @@ func getIPAddress() string {
 			if ipnet.IP.To4() != nil {
 				ip := ipnet.IP.String()
 
-				
 				if strings.HasPrefix(ip, "169.254.") {
 					continue
 				}
 
-		
 				if strings.HasPrefix(ip, networkPrefix) {
-       			 return ip
-    		}
-	
+					return ip
+				}
+
 				if fallbackIP == "" {
 					fallbackIP = ip
 				}
 			}
 		}
 	}
-
 
 	if fallbackIP != "" {
 		return fallbackIP
@@ -168,26 +215,7 @@ func inputPrompt(label string) string {
 	if err != nil {
 		return ""
 	}
-	return result
-}
-
-func sanitizeInput(input string, maxLength int) string {
-	input = strings.TrimSpace(input)
-	if len(input) > maxLength {
-		input = input[:maxLength]
-	}
-	input = strings.Map(func(r rune) rune {
-		if r < 32 || r == 127 {
-			return -1
-		}
-		return r
-	}, input)
-	return input
-}
-
-func isValidComputerName(name string) bool {
-	matched, _ := regexp.MatchString(`^[a-zA-Z0-9\-_]{1,15}$`, name)
-	return matched
+	return strings.TrimSpace(result)
 }
 
 func getEnv(key, defaultValue string) string {
